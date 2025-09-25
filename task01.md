@@ -1,32 +1,38 @@
- Complete Implementation Process for LED Button Mapping
+Updated Implementation Process for LED Steering Indication
 
   Step 1: Add New Function to QioAPI class (lib/src/qio_api.dart)
 
   Location: After line 646 (after removeSteeringActivationButton)
 
-  Future<Map<String, dynamic>> setSteeringLEDIndication(bool enable) async {
-    final cdcLEDId = 66071; // CDC.Status.IndicationLEDStatus.ID
+  Future<Map<String, dynamic>> mapSteeringIndicationToLEDs() async {
+    final cdcIndicationId = 66071; // CDC.Status.IndicationLEDStatus.ID
     final rightGripLED1Id = 65617; // Right Grip LED1ControlNSI.ID  
-    final rightGripLED2Id = 65618; // Right Grip LED2ControlNSI.ID
+    final leftGripLED2Id = 65618;  // Left Grip LED2ControlNSI.ID
 
-  if (enable) {
-      // Map CDC LED status to both grip LEDs
-      _mappingHandler.updateMappingWithInput(cdcLEDId, rightGripLED1Id,
+    // Map CDC indication status to grip LEDs
+    _mappingHandler.updateMappingWithInput(cdcIndicationId, rightGripLED1Id,
   MappingMethod.normal.sign);
-      _mappingHandler.updateMappingWithInput(cdcLEDId, rightGripLED2Id,
+    _mappingHandler.updateMappingWithInput(cdcIndicationId, leftGripLED2Id,
   MappingMethod.normal.sign);
-    } else {
-      // Remove mappings
-      _mappingHandler.removeFromMapping(cdcLEDId, rightGripLED1Id, dontMutate: true);
-      _mappingHandler.removeFromMapping(cdcLEDId, rightGripLED2Id, dontMutate: true);
-    }
 
-   return _mappingHandler.mutateMapping();
+    return _mappingHandler.mutateMapping();
   }
 
-  Step 2: Extend existing setSteeringActivationButton function (lib/src/qio_api.dart)
+  Future<Map<String, dynamic>> removeSteeringIndicationFromLEDs() async {
+    final cdcIndicationId = 66071;
+    final rightGripLED1Id = 65617;
+    final leftGripLED2Id = 65618;
 
-  Location: Lines 626-637, replace with:
+    // Remove mappings
+    _mappingHandler.removeFromMapping(cdcIndicationId, rightGripLED1Id, dontMutate: true);
+    _mappingHandler.removeFromMapping(cdcIndicationId, leftGripLED2Id, dontMutate: true);
+
+    return _mappingHandler.mutateMapping();
+  }
+
+  Step 2: Optional - Extend setSteeringActivationButton (lib/src/qio_api.dart)
+
+  Location: Lines 626-637, modify to optionally enable LED mapping:
 
   Future<Map<String, dynamic>> setSteeringActivationButton(
       ControlPos pos, {bool enableLEDIndication = false}) async {
@@ -38,74 +44,32 @@
     _mappingHandler.updateMappingWithInput(
         btnId, _mappingHandler.activationNsiId, MappingMethod.normal.sign);
 
-  await _mappingHandler.mutateMapping();
+    await _mappingHandler.mutateMapping();
 
-   // Optional LED indication mapping
+    // Optional LED indication mapping
     if (enableLEDIndication) {
-      await setSteeringLEDIndication(true);
+      await mapSteeringIndicationToLEDs();
     }
 
-   return {'success': true, 'ledMapped': enableLEDIndication};
+    return {'success': true, 'ledMapped': enableLEDIndication};
   }
 
-  Step 3: Add LED removal to removeSteeringActivationButton (lib/src/qio_api.dart)
+  Step 3: Key Signal IDs Reference
 
-  Location: Lines 639-646, replace with:
+  - CDC Indication Status: 66071 (CDC.Status.IndicationLEDStatus.ID) - SOURCE
+  - Right Grip LED1: 65617 (LED1ControlNSI.ID) - TARGET
+  - Left Grip LED2: 65618 (LED2ControlNSI.ID) - TARGET
 
-  Future<Map<String, dynamic>> removeSteeringActivationButton(
-      ControlPos pos, {bool removeLEDIndication = true}) async {
-    final button = _getControlAtPos(pos);
-    final int btnId = button.getStateId(null);
+  Step 4: Usage Examples
 
-   final result = await _mappingHandler.removeFromMapping(
-        btnId, _mappingHandler.activationNsiId);
+  // Map CDC steering indication to LEDs
+  await qioAPI.mapSteeringIndicationToLEDs();
 
-   // Optional LED indication removal
-    if (removeLEDIndication) {
-      await setSteeringLEDIndication(false);
-    }
-
-   return result;
-  }
-
-  Step 4: Add LED status getter function (lib/src/qio_api.dart)
-
-  Location: After the new setSteeringLEDIndication function
-
-  Future<Map<String, dynamic>> getSteeringLEDStatus() async {
-    final cdcLEDId = 66071;
-    final rightGripLED1Id = 65617;
-    final rightGripLED2Id = 65618;
-
-  final resp = await _comms.query([cdcLEDId, rightGripLED1Id, rightGripLED2Id]);
-
-   return {
-      'cdcIndicationLED': findValueById(resp, cdcLEDId)['Data'],
-      'rightGripLED1': findValueById(resp, rightGripLED1Id)['Data'],
-      'rightGripLED2': findValueById(resp, rightGripLED2Id)['Data'],
-    };
-  }
-
-  Step 5: Key Signal IDs Reference
-
-  Constants to use:
-  - CDC Indication LED: 66071 (CDC.Status.IndicationLEDStatus.ID)
-  - Right Grip LED1: 65617 (Right Grip LED1ControlNSI.ID)
-  - Right Grip LED2: 65618 (Right Grip LED2ControlNSI.ID)
-
-  Step 6: Usage Examples
-
-  // Enable steering activation with LED indication
+  // Enable steering activation AND LED indication
   await qioAPI.setSteeringActivationButton(ControlPos.right1, enableLEDIndication: true);
 
-  // Just enable LED indication separately
-  await qioAPI.setSteeringLEDIndication(true);
+  // Remove LED indication mapping
+  await qioAPI.removeSteeringIndicationFromLEDs();
 
-  // Check LED status
-  final status = await qioAPI.getSteeringLEDStatus();
-
-  // Remove with LED cleanup
-  await qioAPI.removeSteeringActivationButton(ControlPos.right1, removeLEDIndication: true);
-
-  This creates the mapping: CDC.Status.IndicationLEDStatus → Right Grip LED1 & LED2 for
-  track/wheel-steering indication.
+  Result: When track/wheel-steering becomes active, CDC automatically sets IndicationLEDStatus = 
+  1, which lights both grip LEDs. When inactive, LEDs turn off automatically.
