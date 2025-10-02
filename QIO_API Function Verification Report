@@ -1,0 +1,68 @@
+QIO_API Function Verification Report
+Date: 2025-10-02
+Branch: test/qio-api-STLWRST-186
+QIO_API Branch: STLWRST-186
+Setup Completed:
+✅ Created test branch: test/qio-api-STLWRST-186 from development
+✅ Updated pubspec.yaml to reference STLWRST-186 branch
+✅ Ran flutter pub get to fetch updated dependencies
+✅ Verified functions are available in the package
+New Functions Available:
+1. setSteeringActivationButton
+Location: /lib/src/qio_api.dart:626-647
+Future<Map<String, dynamic>> setSteeringActivationButton(ControlPos pos,
+    {bool enableLEDIndication = false}) async {
+  final button = _getControlAtPos(pos);
+  if (button is! Button) {
+    throw 'Only buttons can be used for steering activation. Got: ${button.runtimeType}';
+  }
+  final int btnId = button.getStateId(null);
+  _mappingHandler.updateMappingWithInput(
+      btnId, _mappingHandler.activationNsiId, MappingMethod.normal.sign);
+
+  await _mappingHandler.mutateMapping();
+
+  // LED indication mapping as per Jira requirement
+  if (enableLEDIndication) {
+    _mappingHandler.updateMappingWithInput(
+        cdcActivationLedNsi, rightGripLed1Nsi, MappingMethod.normal.sign);
+
+    await _mappingHandler.mutateMapping();
+  }
+
+  return {'success': true, 'ledMapped': enableLEDIndication};
+}
+Features:
+Maps button to steering activation
+Optional LED indication mapping to right grip LED
+Returns success status and LED mapping state
+2. removeSteeringActivationButton
+Location: /lib/src/qio_api.dart:649-664
+Future<Map<String, dynamic>> removeSteeringActivationButton(ControlPos pos,
+    {bool removeLEDIndication = true}) async {
+  final button = _getControlAtPos(pos);
+  final int btnId = button.getStateId(null);
+
+  await _mappingHandler.removeFromMapping(
+      btnId, _mappingHandler.activationNsiId);
+
+  // Remove LED indication mapping if requested
+  if (removeLEDIndication) {
+    await _mappingHandler.removeFromMapping(
+        cdcActivationLedNsi, rightGripLed1Nsi);
+  }
+
+  return {'success': true, 'ledRemoved': removeLEDIndication};
+}
+Features:
+Removes button from steering activation mapping
+Optional LED indication removal
+Returns success status and LED removal state
+Git Commit Reference:
+Latest commit on STLWRST-186:
+bdfef5c - Implemented setSteeringActivationButton() and removeSteeringActivationButton() 
+         with optional LED indication mapping
+       - Added test cases covering function return formats and constant validation
+       - Functions support CDC activation indication LED to grip LED mapping per requirements
+Status:
+✅ Both functions are fully accessible and ready to use in the Flutter project
